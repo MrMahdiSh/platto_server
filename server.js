@@ -1,7 +1,7 @@
 const express = require("express");
 const http = require("http");
 const mongoose = require("mongoose");
-const socketIo = require("socket.io");
+const WebSocket = require("ws");
 const authRoutes = require("./routes/authRoutes");
 const gameRoute = require("./routes/gameRoutes");
 require("dotenv").config();
@@ -12,13 +12,7 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 const server = http.createServer(app);
-const io = new socketIo.Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-  transports: ["websocket", "polling"],
-});
+const wss = new WebSocket.Server({ server });
 
 app.use(express.json());
 
@@ -28,7 +22,7 @@ app.use(gameRoute);
 
 app.use(errorMiddleware);
 
-require("./sockets/gameSocket")(io);
+require("./sockets/gameSocket")(wss);
 
 console.log(process.env.MONGODB_URI);
 // Your MongoDB connection here

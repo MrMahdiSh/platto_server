@@ -1,157 +1,157 @@
+const WebSocket = require("ws");
 const Game = require("../models/Game");
 const User = require("../models/User");
 const Question = require("../models/Question");
 
-module.exports = (io) => {
-  io.on("connection", (socket) => {
-    console.log("New player connected:", socket.id);
+module.exports = (wss) => {
+  wss.on("connection", (ws) => {
+    console.log("New player connected");
 
-    socket.on("Game", async (data) => {
-      const { gameType, userId } = data;
-
-      console.log("Opponent found:", userId);
-
+    ws.on("message", async (message) => {
       try {
-        const game = await Game.findOne({
-          status: "waiting",
-          gameType: gameType,
-          players: { $size: 1 },
-        });
+        const { event, data } = JSON.parse(message);
 
-        let gameId;
-        if (game) {
-          gameId = game._id;
-          game.players.push(userId);
-          game.status = "in-progress";
+        if (event === "Game") {
+          const { gameType, userId } = data;
+
+          console.log("Opponent found:", userId);
+
+          let game = await Game.findOne({
+            status: "waiting",
+            gameType: gameType,
+            players: { $size: 1 },
+          });
+
+          let gameId;
+          if (game) {
+            gameId = game._id;
+            game.players.push(userId);
+            game.status = "in-progress";
+            await game.save();
+
+            const [playerOne, playerTwo] = await Promise.all([
+              User.findById(game.players[0]),
+              User.findById(game.players[1]),
+            ]);
+
+            const response = {
+              event: "gameStarted",
+              data: {
+                message: `${userId} has joined the game!`,
+                playerOne: {
+                  userId: playerOne._id,
+                  profileImageUrl: playerOne.profileImageUrl,
+                  username: playerOne.username,
+                },
+                categoryTurn: playerOne._id,
+                gameId: game._id,
+                playerTwo: {
+                  userId: playerTwo._id,
+                  profileImageUrl: playerTwo.profileImageUrl,
+                  username: playerTwo.username,
+                },
+              },
+            };
+
+            ws.send(JSON.stringify(response));
+          } else {
+            const newGame = new Game({
+              players: [userId],
+              categoryTurn: [userId],
+              gameType: gameType,
+              status: "waiting",
+              startTime: new Date(),
+            });
+
+            gameId = newGame._id;
+            await newGame.save();
+          }
+        } else if (event.endsWith("_servering")) {
+          const { gameId, userID, point, category, text } = data;
+          const response = {
+            event: gameId + "_pointsUpdate",
+            data: { userID, point, category, text },
+          };
+          ws.send(JSON.stringify(response));
+        } else if (event.endsWith("_sync_server")) {
+          const { gameId, whiteBallPosition, cuePosition, cueRotation } = data;
+          broadcast(
+            wss,
+            JSON.stringify({
+              event: gameId + "_sync_client",
+              data: { whiteBallPosition, cuePosition, cueRotation },
+            }),
+            ws
+          );
+        } else if (event.endsWith("_shoot_sync_server")) {
+          const { gameId, whiteBallPosition, cuePosition, cueRotation, power } = data;
+          broadcast(
+            wss,
+            JSON.stringify({
+              event: gameId + "_shoot_client",
+              data: { whiteBallPosition, cuePosition, cueRotation, power },
+            }),
+            ws
+          );
+        } else if (event === "categoryChoosedByUser") {
+          const { gameID, categoryName } = data;
+          const game = await Game.findById(gameID);
+          game.categoryTurn =
+            game.categoryTurn === game.players[0]
+              ? game.players[1]
+              : game.players[0];
+          game.currentCategory = categoryName;
           await game.save();
 
-          socket.join(gameId.toString());
-          const [playerOne, playerTwo] = await Promise.all([
-            User.findById(game.players[0]),
-            User.findById(game.players[1]),
-          ]);
-
-          const playerOneDetails = {
-            userId: playerOne._id,
-            profileImageUrl: playerOne.profileImageUrl,
-            username: playerOne.username,
-          };
-
-          const playerTwoDetails = {
-            userId: playerTwo._id,
-            profileImageUrl: playerTwo.profileImageUrl,
-            username: playerTwo.username,
-          };
-
-          io.to(gameId.toString()).emit("gameStarted", {
-            message: `${userId} has joined the game!`,
-            playerOne: playerOneDetails,
-            categoryTurn: playerOne._id,
-            gameId: game._id,
-            playerTwo: playerTwoDetails,
-          });
-        } else {
-          const newGame = new Game({
-            players: [userId],
-            categoryTurn: [userId],
-            gameType: gameType,
-            status: "waiting",
-            startTime: new Date(),
-          });
-
-          gameId = newGame._id;
-          const savedGame = await newGame.save();
-          socket.join(savedGame._id.toString());
-        }
-
-        socket.on(gameId.toString() + "_servering", async (data) => {
-          const { userID, point, category, text } = data;
-          socket.emit(
-            gameId.toString() + "_pointsUpdate",
-            userID,
-            point,
-            category,
-            text
+          Question.aggregate([
+            { $match: { category: categoryName } },
+            { $sample: { size: 3 } },
+          ])
+            .then((questions) => {
+              broadcast(
+                wss,
+                JSON.stringify({
+                  event: "categorySelected",
+                  data: {
+                    message: `${data.playerId} selected category: ${data.category}`,
+                    categoryName: categoryName,
+                    questions: questions,
+                  },
+                })
+              );
+            })
+            .catch((err) => {
+              console.error("Error fetching questions:", err);
+              ws.send(JSON.stringify({ event: "error", data: "An error occurred while fetching questions." }));
+            });
+        } else if (event === "updateGameState") {
+          broadcast(
+            wss,
+            JSON.stringify({
+              event: "updateGameState",
+              data: {
+                playerId: data.playerId,
+                points: data.points,
+              },
+            })
           );
-        });
-
-        socket.on(gameId.toString() + "_sync_server", (data) => {
-          const { whiteBallPosition, cuePosition, cueRotation } = data;
-
-          console.log("Received sync data:", {
-            whiteBallPosition,
-            cuePosition,
-            cueRotation,
-          });
-
-          // Broadcast the received data to other clients
-          socket.broadcast.emit(gameId.toString() + "_sync_client", {
-            whiteBallPosition,
-            cuePosition,
-            cueRotation,
-          });
-        });
-
-        socket.on(gameId.toString() + "_shoot_sync_server", (data) => {
-          const { whiteBallPosition, cuePosition, cueRotation, power } = data;
-
-          console.log("Received sync data:", {
-            whiteBallPosition,
-            cuePosition,
-            cueRotation,
-            power,
-          });
-
-          // Broadcast the received data to other clients
-          socket.broadcast.emit(gameId.toString() + "_shoot_client", {
-            whiteBallPosition,
-            cuePosition,
-            cueRotation,
-            power,
-          });
-        });
+        }
       } catch (err) {
-        console.error("Error finding or creating game:", err);
-        socket.emit("error", "An error occurred while managing the game.");
+        console.error("Error processing message:", err);
+        ws.send(JSON.stringify({ event: "error", data: "An error occurred while processing your request." }));
       }
     });
 
-    socket.on("categoryChoosedByUser", async (data) => {
-      const { gameID, categoryName } = data;
-      const game = await Game.findById(gameID);
-      game.categoryTurn =
-        game.categoryTurn === game.players[0]
-          ? game.players[1]
-          : game.players[0];
-      game.currentCategory = categoryName;
-      await game.save();
-
-      Question.aggregate([
-        { $match: { category: categoryName } },
-        { $sample: { size: 3 } },
-      ])
-        .then((questions) => {
-          io.to(gameID).emit("categorySelected", {
-            message: `${data.playerId} selected category: ${data.category}`,
-            categoryName: categoryName,
-            questions: questions,
-          });
-        })
-        .catch((err) => {
-          console.error("Error fetching questions:", err);
-          socket.emit("error", "An error occurred while fetching questions.");
-        });
-    });
-
-    socket.on("updateGameState", (data) => {
-      io.to(data.gameId).emit("updateGameState", {
-        playerId: data.playerId,
-        points: data.points,
-      });
-    });
-
-    socket.on("disconnect", () => {
-      console.log("Player disconnected:", socket.id);
+    ws.on("close", () => {
+      console.log("Player disconnected");
     });
   });
+
+  function broadcast(wss, message, sender = null) {
+    wss.clients.forEach((client) => {
+      if (client !== sender && client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
 };
