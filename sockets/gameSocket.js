@@ -5,10 +5,6 @@ const Question = require("../models/Question");
 
 module.exports = (wss) => {
   wss.on("connection", (ws) => {
-    ws.send(
-      JSON.stringify({ event: "connection", data: "Connected to the server" })
-    );
-
     console.log("New player connected");
 
     ws.on("message", async (message) => {
@@ -36,6 +32,12 @@ module.exports = (wss) => {
           if (game) {
             console.log("Opponent found. Joining game:", game._id);
             gameId = game._id;
+            ws.send(
+              JSON.stringify({
+                eventType: "gameDetail",
+                data: { game_id: gameId },
+              })
+            );
             game.players.push(userId);
             game.status = "in-progress";
             await game.save();
@@ -64,7 +66,7 @@ module.exports = (wss) => {
               },
             };
 
-            ws.send(JSON.stringify(response));
+            broadcast(wss, JSON.stringify(response));
             console.log("gameStarted event sent successfully.");
           } else {
             console.log("No opponent found. Creating a new game...");
@@ -76,6 +78,14 @@ module.exports = (wss) => {
             });
 
             gameId = newGame._id;
+
+            ws.send(
+              JSON.stringify({
+                eventType: "gameDetail",
+                data: { game_id: gameId },
+              })
+            );
+
             await newGame.save();
             console.log("New game created with ID:", gameId);
           }
