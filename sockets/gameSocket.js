@@ -103,39 +103,6 @@ module.exports = (wss) => {
             JSON.stringify({ event: gameId + "_shoot_client", data: { whiteBallPosition, cuePosition, cueRotation, power } }),
             ws // Broadcast shoot sync to all in the room
           );
-        } else if (eventType === "categoryChoosedByUser") {
-          const { gameID, categoryName } = data;
-          const game = await Game.findById(gameID);
-          game.categoryTurn = game.categoryTurn === game.players[0] ? game.players[1] : game.players[0];
-          game.currentCategory = categoryName;
-          await game.save();
-
-          Question.aggregate([{ $match: { category: categoryName } }, { $sample: { size: 3 } }])
-            .then((questions) => {
-              broadcastToRoom(
-                gameID,
-                JSON.stringify({
-                  event: "categorySelected",
-                  data: {
-                    message: `${data.playerId} selected category: ${data.category}`,
-                    categoryName: categoryName,
-                    questions: questions,
-                  },
-                })
-              );
-            })
-            .catch((err) => {
-              console.error("Error fetching questions:", err);
-              ws.send(JSON.stringify({ event: "error", data: "An error occurred while fetching questions." }));
-            });
-        } else if (eventType === "updateGameState") {
-          broadcastToRoom(
-            data.gameId,
-            JSON.stringify({
-              event: "updateGameState",
-              data: { playerId: data.playerId, points: data.points },
-            })
-          );
         }
       } catch (err) {
         console.error("Error processing message:", err);
@@ -152,7 +119,6 @@ module.exports = (wss) => {
   // Broadcast message to all clients in the specified game room
   function broadcastToRoom(gameId, message, sender = null) {
     if (!rooms[gameId]) return;
-    console.log(rooms[gameId]); // Check the room contents
     rooms[gameId].forEach((client) => {
       if (client !== sender && client.readyState === WebSocket.OPEN) {
         client.send(message);
