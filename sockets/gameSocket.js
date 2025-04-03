@@ -4,6 +4,8 @@ const User = require("../models/User");
 const Question = require("../models/Question");
 
 module.exports = (wss) => {
+  const rooms = {}; // Object to store game-specific connections, using gameId as the key
+
   wss.on("connection", (ws) => {
     console.log("New player connected");
 
@@ -20,7 +22,6 @@ module.exports = (wss) => {
           const { gameType, userId } = data;
 
           console.log("Received Game event with data:", data);
-
           console.log("Searching for an opponent...");
           let game = await Game.findOne({
             status: "waiting",
@@ -32,19 +33,16 @@ module.exports = (wss) => {
           if (game) {
             console.log("Opponent found. Joining game:", game._id);
             gameId = game._id;
-            ws.send(
-              JSON.stringify({
-                eventType: "gameDetail",
-                data: { game_id: gameId },
-              })
-            );
+            ws.send(JSON.stringify({ eventType: "gameDetail", data: { game_id: gameId } }));
             game.players.push(userId);
             game.status = "in-progress";
             await game.save();
 
-            console.log(
-              "Game updated to in-progress. Fetching player details..."
-            );
+            // Ensure gameId exists in rooms, and add the client (ws) to the room's array
+            if (!rooms[gameId]) rooms[gameId] = [];
+            rooms[gameId].push(ws); // Adding player to the room's array
+
+            console.log("Game updated to in-progress. Fetching player details...");
             const players = await Promise.all(
               game.players.map(async (playerId) => {
                 const player = await User.findById(playerId);
@@ -66,7 +64,7 @@ module.exports = (wss) => {
               },
             };
 
-            broadcast(wss, JSON.stringify(response));
+            broadcastToRoom(gameId, JSON.stringify(response)); // Broadcast only to players in the game room
             console.log("gameStarted event sent successfully.");
           } else {
             console.log("No opponent found. Creating a new game...");
@@ -78,62 +76,44 @@ module.exports = (wss) => {
             });
 
             gameId = newGame._id;
-
-            ws.send(
-              JSON.stringify({
-                eventType: "gameDetail",
-                data: { game_id: gameId },
-              })
-            );
+            ws.send(JSON.stringify({ eventType: "gameDetail", data: { game_id: gameId } }));
 
             await newGame.save();
             console.log("New game created with ID:", gameId);
+
+            // Ensure gameId exists in rooms, and add the client (ws) to the room's array
+            if (!rooms[gameId]) rooms[gameId] = [];
+            rooms[gameId].push(ws); // Adding player to the room's array
           }
         } else if (eventType.endsWith("_servering")) {
           const { gameId, userID, point, category, text } = data;
-          const response = {
-            event: gameId + "_pointsUpdate",
-            data: { userID, point, category, text },
-          };
-          ws.send(JSON.stringify(response));
+          const response = { event: gameId + "_pointsUpdate", data: { userID, point, category, text } };
+          sendToRoom(gameId, JSON.stringify(response), ws); // Send update to the room
         } else if (eventType.endsWith("_sync_server")) {
           const { gameId, whiteBallPosition, cuePosition, cueRotation } = data;
-          broadcast(
-            wss,
-            JSON.stringify({
-              event: gameId + "_sync_client",
-              data: { whiteBallPosition, cuePosition, cueRotation },
-            }),
-            ws
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({ event: gameId + "_sync_client", data: { whiteBallPosition, cuePosition, cueRotation } }),
+            ws // Broadcast sync to all in the room
           );
         } else if (eventType.endsWith("_shoot_sync_server")) {
-          const { gameId, whiteBallPosition, cuePosition, cueRotation, power } =
-            data;
-          broadcast(
-            wss,
-            JSON.stringify({
-              event: gameId + "_shoot_client",
-              data: { whiteBallPosition, cuePosition, cueRotation, power },
-            }),
-            ws
+          const { gameId, whiteBallPosition, cuePosition, cueRotation, power } = data;
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({ event: gameId + "_shoot_client", data: { whiteBallPosition, cuePosition, cueRotation, power } }),
+            ws // Broadcast shoot sync to all in the room
           );
         } else if (eventType === "categoryChoosedByUser") {
           const { gameID, categoryName } = data;
           const game = await Game.findById(gameID);
-          game.categoryTurn =
-            game.categoryTurn === game.players[0]
-              ? game.players[1]
-              : game.players[0];
+          game.categoryTurn = game.categoryTurn === game.players[0] ? game.players[1] : game.players[0];
           game.currentCategory = categoryName;
           await game.save();
 
-          Question.aggregate([
-            { $match: { category: categoryName } },
-            { $sample: { size: 3 } },
-          ])
+          Question.aggregate([{ $match: { category: categoryName } }, { $sample: { size: 3 } }])
             .then((questions) => {
-              broadcast(
-                wss,
+              broadcastToRoom(
+                gameID,
                 JSON.stringify({
                   event: "categorySelected",
                   data: {
@@ -146,46 +126,57 @@ module.exports = (wss) => {
             })
             .catch((err) => {
               console.error("Error fetching questions:", err);
-              ws.send(
-                JSON.stringify({
-                  event: "error",
-                  data: "An error occurred while fetching questions.",
-                })
-              );
+              ws.send(JSON.stringify({ event: "error", data: "An error occurred while fetching questions." }));
             });
         } else if (eventType === "updateGameState") {
-          broadcast(
-            wss,
+          broadcastToRoom(
+            data.gameId,
             JSON.stringify({
               event: "updateGameState",
-              data: {
-                playerId: data.playerId,
-                points: data.points,
-              },
+              data: { playerId: data.playerId, points: data.points },
             })
           );
         }
       } catch (err) {
         console.error("Error processing message:", err);
-        ws.send(
-          JSON.stringify({
-            event: "error",
-            data: "An error occurred while processing your request.",
-          })
-        );
+        ws.send(JSON.stringify({ event: "error", data: "An error occurred while processing your request." }));
       }
     });
 
     ws.on("close", () => {
       console.log("Player disconnected");
+      removeFromRooms(ws); // Ensure cleanup of disconnected players
     });
   });
 
-  function broadcast(wss, message, sender = null) {
-    wss.clients.forEach((client) => {
+  // Broadcast message to all clients in the specified game room
+  function broadcastToRoom(gameId, message, sender = null) {
+    if (!rooms[gameId]) return;
+    console.log(rooms[gameId]); // Check the room contents
+    rooms[gameId].forEach((client) => {
       if (client !== sender && client.readyState === WebSocket.OPEN) {
         client.send(message);
       }
     });
+  }
+
+  // Send message to the specified room but only to the sender
+  function sendToRoom(gameId, message, sender) {
+    if (!rooms[gameId]) return;
+    if (sender && sender.readyState === WebSocket.OPEN) {
+      sender.send(message);
+    }
+  }
+
+  // Clean up disconnected players
+  function removeFromRooms(ws) {
+    for (const gameId in rooms) {
+      if (rooms[gameId].includes(ws)) {
+        rooms[gameId] = rooms[gameId].filter(client => client !== ws); // Remove player from room
+        if (rooms[gameId].length === 0) {
+          delete rooms[gameId]; // Delete room if empty
+        }
+      }
+    }
   }
 };
