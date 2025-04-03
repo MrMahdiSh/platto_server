@@ -13,6 +13,8 @@ module.exports = (wss) => {
       try {
         const { eventType, data } = JSON.parse(message);
 
+        console.log(eventType);
+
         if (!eventType) {
           console.error("eventType is missing from the message:", message);
           return;
@@ -33,7 +35,12 @@ module.exports = (wss) => {
           if (game) {
             console.log("Opponent found. Joining game:", game._id);
             gameId = game._id;
-            ws.send(JSON.stringify({ eventType: "gameDetail", data: { game_id: gameId } }));
+            ws.send(
+              JSON.stringify({
+                eventType: "gameDetail",
+                data: { game_id: gameId },
+              })
+            );
             game.players.push(userId);
             game.status = "in-progress";
             await game.save();
@@ -42,7 +49,9 @@ module.exports = (wss) => {
             if (!rooms[gameId]) rooms[gameId] = [];
             rooms[gameId].push(ws); // Adding player to the room's array
 
-            console.log("Game updated to in-progress. Fetching player details...");
+            console.log(
+              "Game updated to in-progress. Fetching player details..."
+            );
             const players = await Promise.all(
               game.players.map(async (playerId) => {
                 const player = await User.findById(playerId);
@@ -76,7 +85,12 @@ module.exports = (wss) => {
             });
 
             gameId = newGame._id;
-            ws.send(JSON.stringify({ eventType: "gameDetail", data: { game_id: gameId } }));
+            ws.send(
+              JSON.stringify({
+                eventType: "gameDetail",
+                data: { game_id: gameId },
+              })
+            );
 
             await newGame.save();
             console.log("New game created with ID:", gameId);
@@ -85,28 +99,37 @@ module.exports = (wss) => {
             if (!rooms[gameId]) rooms[gameId] = [];
             rooms[gameId].push(ws); // Adding player to the room's array
           }
-        } else if (eventType.endsWith("_servering")) {
-          const { gameId, userID, point, category, text } = data;
-          const response = { event: gameId + "_pointsUpdate", data: { userID, point, category, text } };
-          sendToRoom(gameId, JSON.stringify(response), ws); // Send update to the room
-        } else if (eventType.endsWith("_sync_server")) {
+        } else if (eventType == "sync_server") {
           const { gameId, whiteBallPosition, cuePosition, cueRotation } = data;
           broadcastToRoom(
             gameId,
-            JSON.stringify({ event: gameId + "_sync_client", data: { whiteBallPosition, cuePosition, cueRotation } }),
+            JSON.stringify({
+              eventType: gameId + "_sync_client",
+              data: { whiteBallPosition, cuePosition, cueRotation },
+            }),
             ws // Broadcast sync to all in the room
           );
-        } else if (eventType.endsWith("_shoot_sync_server")) {
-          const { gameId, whiteBallPosition, cuePosition, cueRotation, power } = data;
+        } else if (eventType == "shoot_sync_server") {
+          console.log(data);
+          const { gameId, whiteBallPosition, cuePosition, cueRotation, power } =
+            data;
           broadcastToRoom(
             gameId,
-            JSON.stringify({ event: gameId + "_shoot_client", data: { whiteBallPosition, cuePosition, cueRotation, power } }),
-            ws // Broadcast shoot sync to all in the room
+            JSON.stringify({
+              eventType: "shoot_client",
+              data: { whiteBallPosition, cuePosition, cueRotation, power },
+            }),
+            ws
           );
         }
       } catch (err) {
         console.error("Error processing message:", err);
-        ws.send(JSON.stringify({ event: "error", data: "An error occurred while processing your request." }));
+        ws.send(
+          JSON.stringify({
+            eventType: "error",
+            data: "An error occurred while processing your request.",
+          })
+        );
       }
     });
 
@@ -138,7 +161,7 @@ module.exports = (wss) => {
   function removeFromRooms(ws) {
     for (const gameId in rooms) {
       if (rooms[gameId].includes(ws)) {
-        rooms[gameId] = rooms[gameId].filter(client => client !== ws); // Remove player from room
+        rooms[gameId] = rooms[gameId].filter((client) => client !== ws); // Remove player from room
         if (rooms[gameId].length === 0) {
           delete rooms[gameId]; // Delete room if empty
         }
