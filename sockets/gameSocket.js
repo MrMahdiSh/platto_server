@@ -28,7 +28,6 @@ module.exports = (wss) => {
           let game = await Game.findOne({
             status: "waiting",
             gameType: gameType,
-            players: { $size: 1 },
           });
 
           let gameId;
@@ -42,8 +41,6 @@ module.exports = (wss) => {
               })
             );
             game.players.push(userId);
-            game.status = "in-progress";
-            await game.save();
 
             // Ensure gameId exists in rooms, and add the client (ws) to the room's array
             if (!rooms[gameId]) rooms[gameId] = [];
@@ -64,17 +61,35 @@ module.exports = (wss) => {
             );
 
             console.log("Players fetched. Sending gameStarted event...");
-            const response = {
-              eventType: "gameStarted",
-              data: {
-                message: `${userId} has joined the game!`,
-                players: players,
-                gameId: game._id,
-              },
-            };
 
-            broadcastToRoom(gameId, JSON.stringify(response)); // Broadcast only to players in the game room
-            console.log("gameStarted event sent successfully.");
+            // game started
+            console.log(game.players.length);
+            console.log(game.gameType);
+
+            // save the game
+            await game.save();
+
+            if (
+              (game.players.length == 2 && game.gameType == "Classic") ||
+              (game.players.length == 4 && game.gameType == "4Player")
+            ) {
+              const response = {
+                eventType: "gameStarted",
+                data: {
+                  message: `${userId} has joined the game!`,
+                  players: players,
+                  gameId: game._id,
+                },
+              };
+
+              broadcastToRoom(gameId, JSON.stringify(response));
+
+              game.status = "in-progress";
+
+              await game.save();
+
+              console.log("gameStarted event sent successfully.");
+            }
           } else {
             console.log("No opponent found. Creating a new game...");
             const newGame = new Game({
