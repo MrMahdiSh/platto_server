@@ -24,10 +24,13 @@ module.exports = (wss) => {
         if (eventType === "Game") {
           const { gameType, userId } = data;
 
+          ws.userId = userId;
+
           if (gameType != "Tournament") {
             let game = await Game.findOne({
               status: "waiting",
               gameType: gameType,
+              players: { $ne: userId }, 
             });
 
             let gameId;
@@ -187,8 +190,41 @@ module.exports = (wss) => {
     });
 
     ws.on("close", () => {
+      // tell other ones to put them on client side
+      for (const [roomId, clients] of Object.entries(rooms)) {
+        const index = clients.indexOf(ws);
+        if (index !== -1) {
+          clients.splice(index, 1);
+
+          if (clients.length === 0) {
+            delete rooms[roomId];
+            console.log(`Room ${roomId} is now empty and deleted.`);
+          } else {
+            // Notify remaining players
+            const disconnectMessage = JSON.stringify({
+              eventType: "playerDisconnected",
+              data: {
+                message: "A player has disconnected.",
+                userId: ws.userId,
+              },
+            });
+
+            clients.forEach((client) => {
+              console.log("|||message sent for" + roomId);
+              try {
+                client.send(disconnectMessage);
+              } catch (err) {
+                console.error("Failed to notify client of disconnection:", err);
+              }
+            });
+          }
+
+          break; // Exit loop since we found the room
+        }
+      }
       console.log("Player disconnected");
-      removeFromRooms(ws); // Ensure cleanup of disconnected players
+      removeFromRooms(ws);
+      userDisconnected(ws.userId);
     });
   });
 
@@ -220,5 +256,66 @@ module.exports = (wss) => {
         }
       }
     }
+  }
+
+  function userDisconnected(id) {
+    if (!id) return;
+
+    // Handle game disconnection
+    console.log(`Checking for games involving user ${id}...`);
+    Game.findOne({ players: id, status: { $in: ["in-progress", "waiting"] } })
+      .then(async (game) => {
+        if (game) {
+          console.log(`Game found for user ${id}:`, game._id);
+          if (game.status === "in-progress") {
+            console.log(
+              `Game ${game._id} is in-progress. Marking as completed.`
+            );
+            game.status = "completed";
+            await game.save();
+            console.log(`Game ${game._id} marked as completed.`);
+          } else if (game.status === "waiting") {
+            console.log(
+              `Game ${game._id} is waiting. Removing user ${id} from players.`
+            );
+            game.players = game.players.filter(
+              (playerId) => playerId.toString() !== id.toString()
+            );
+            if (game.players.length === 0) {
+              console.log(
+                `No players left in game ${game._id}. Deleting game.`
+              );
+              await Game.deleteOne({ _id: game._id });
+              console.log(`Game ${game._id} deleted.`);
+            } else {
+              await game.save();
+              console.log(
+                `Player ${id} removed from game ${game._id}. Remaining players:`,
+                game.players
+              );
+            }
+          }
+        } else {
+          console.log(`No active games found for user ${id}.`);
+        }
+      })
+      .catch((err) => {
+        console.error("Error updating game status on user disconnect:", err);
+      });
+
+    // Handle tournament disconnection
+    Tournament.findOne({ players: id, status: "in-progress" })
+      .then(async (tournament) => {
+        if (tournament) {
+          // tournament.status = "completed";
+          // await tournament.save();
+        }
+      })
+      .catch((err) => {
+        console.error(
+          "Error updating tournament status on user disconnect:",
+          err
+        );
+      });
   }
 };
