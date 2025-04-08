@@ -1,11 +1,12 @@
 const WebSocket = require("ws");
 const Game = require("../models/Game");
+const Tournament = require("../models/Tournament");
 const User = require("../models/User");
 const Question = require("../models/Question");
 
 module.exports = (wss) => {
   const rooms = {}; // Object to store game-specific connections, using gameId as the key
-
+  const tournamentPlayers = 4;
   wss.on("connection", (ws) => {
     console.log("New player connected");
 
@@ -23,96 +24,133 @@ module.exports = (wss) => {
         if (eventType === "Game") {
           const { gameType, userId } = data;
 
-          console.log("Received Game event with data:", data);
-          console.log("Searching for an opponent...");
-          let game = await Game.findOne({
-            status: "waiting",
-            gameType: gameType,
-          });
-
-          let gameId;
-          if (game) {
-            console.log("Opponent found. Joining game:", game._id);
-            gameId = game._id;
-            ws.send(
-              JSON.stringify({
-                eventType: "gameDetail",
-                data: { game_id: gameId },
-              })
-            );
-            game.players.push(userId);
-
-            // Ensure gameId exists in rooms, and add the client (ws) to the room's array
-            if (!rooms[gameId]) rooms[gameId] = [];
-            rooms[gameId].push(ws); // Adding player to the room's array
-
-            console.log(
-              "Game updated to in-progress. Fetching player details..."
-            );
-            const players = await Promise.all(
-              game.players.map(async (playerId) => {
-                const player = await User.findById(playerId);
-                return {
-                  userId: player._id,
-                  username: player.username,
-                  profileImageUrl: player.profileImageUrl,
-                };
-              })
-            );
-
-            console.log("Players fetched. Sending gameStarted event...");
-
-            // game started
-            console.log(game.players.length);
-            console.log(game.gameType);
-
-            // save the game
-            await game.save();
-
-            if (
-              (game.players.length == 2 && game.gameType == "Classic") ||
-              (game.players.length == 4 && game.gameType == "4Player")
-            ) {
-              const response = {
-                eventType: "gameStarted",
-                data: {
-                  message: `${userId} has joined the game!`,
-                  players: players,
-                  gameId: game._id,
-                },
-              };
-
-              broadcastToRoom(gameId, JSON.stringify(response));
-
-              game.status = "in-progress";
-
-              await game.save();
-
-              console.log("gameStarted event sent successfully.");
-            }
-          } else {
-            console.log("No opponent found. Creating a new game...");
-            const newGame = new Game({
-              players: [userId],
-              gameType: gameType,
+          if (gameType != "Tournament") {
+            let game = await Game.findOne({
               status: "waiting",
-              startTime: new Date(),
+              gameType: gameType,
             });
 
-            gameId = newGame._id;
-            ws.send(
-              JSON.stringify({
-                eventType: "gameDetail",
-                data: { game_id: gameId },
-              })
-            );
+            let gameId;
+            if (game) {
+              console.log("Opponent found. Joining game:", game._id);
+              gameId = game._id;
+              ws.send(
+                JSON.stringify({
+                  eventType: "gameDetail",
+                  data: { game_id: gameId },
+                })
+              );
+              game.players.push(userId);
 
-            await newGame.save();
-            console.log("New game created with ID:", gameId);
+              // Ensure gameId exists in rooms, and add the client (ws) to the room's array
+              if (!rooms[gameId]) rooms[gameId] = [];
+              rooms[gameId].push(ws); // Adding player to the room's array
 
-            // Ensure gameId exists in rooms, and add the client (ws) to the room's array
-            if (!rooms[gameId]) rooms[gameId] = [];
-            rooms[gameId].push(ws); // Adding player to the room's array
+              console.log(
+                "Game updated to in-progress. Fetching player details..."
+              );
+              const players = await Promise.all(
+                game.players.map(async (playerId) => {
+                  const player = await User.findById(playerId);
+                  return {
+                    userId: player._id,
+                    username: player.username,
+                    profileImageUrl: player.profileImageUrl,
+                  };
+                })
+              );
+
+              console.log("Players fetched. Sending gameStarted event...");
+
+              // game started
+              console.log(game.players.length);
+              console.log(game.gameType);
+
+              // save the game
+              await game.save();
+
+              if (
+                (game.players.length == 2 && game.gameType == "Classic") ||
+                (game.players.length == 4 && game.gameType == "4Player")
+              ) {
+                const response = {
+                  eventType: "gameStarted",
+                  data: {
+                    message: `${userId} has joined the game!`,
+                    players: players,
+                    gameId: game._id,
+                  },
+                };
+
+                broadcastToRoom(gameId, JSON.stringify(response));
+
+                game.status = "in-progress";
+
+                await game.save();
+
+                console.log("gameStarted event sent successfully.");
+              }
+            } else {
+              console.log("No opponent found. Creating a new game...");
+              const newGame = new Game({
+                players: [userId],
+                gameType: gameType,
+                status: "waiting",
+                startTime: new Date(),
+              });
+
+              gameId = newGame._id;
+              ws.send(
+                JSON.stringify({
+                  eventType: "gameDetail",
+                  data: { game_id: gameId },
+                })
+              );
+
+              await newGame.save();
+              console.log("New game created with ID:", gameId);
+
+              // Ensure gameId exists in rooms, and add the client (ws) to the room's array
+              if (!rooms[gameId]) rooms[gameId] = [];
+              rooms[gameId].push(ws); // Adding player to the room's array
+            }
+          } else {
+            // search for a tournomant
+            let tournament = await Tournament.findOne({
+              status: "waiting",
+              gameType: gameType,
+            });
+
+            if (tournament) {
+              tournament.players.push(userId);
+              if (!rooms[tournament._id]) rooms[tournament._id] = [];
+              rooms[tournament._id].push(ws);
+
+              if (tournament.players.count == tournamentPlayers) {
+                const players = await Promise.all(
+                  tournament.players.map(async (playerId) => {
+                    const player = await User.findById(playerId);
+                    return {
+                      userId: player._id,
+                      username: player.username,
+                      profileImageUrl: player.profileImageUrl,
+                    };
+                  })
+                );
+              }
+              await tournament.save();
+            } else {
+              const newTournament = new Tournament({
+                players: [userId],
+                gameType: gameType,
+                status: "waiting",
+                startTime: new Date(),
+              });
+
+              if (!rooms[newTournament._id]) rooms[newTournament._id] = [];
+              rooms[newTournament._id].push(ws);
+              await newTournament.save();
+            }
           }
         } else if (eventType == "sync_server") {
           const { gameId, whiteBallPosition, cuePosition, cueRotation } = data;
