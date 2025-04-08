@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const Item = require("../models/Item");
+const nodemailer = require("nodemailer");
 
 exports.buy = async (data) => {
   try {
@@ -187,6 +188,43 @@ exports.pay = async (data) => {
       status: "error",
       message: "An error occurred",
       error: error.message,
+    };
+  }
+};
+
+exports.email = async (data) => {
+  try {
+    const { email, subject, text } = data;
+
+    // Create the transporter
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "mahdishoorabi@gmail.com",
+        pass: "rvmfdthhjryqhdaf", // use App Password (never Gmail main pass!)
+      },
+    });
+
+    // Set up email data
+    const mailOptions = {
+      from: '"Your Game" <mahdishoorabi@gmail.com>',
+      to: email,
+      subject: subject,
+      text: text,
+    };
+
+    // Send email
+    await transporter.sendMail(mailOptions);
+
+    return {
+      status: "success",
+      message: "Email sent successfully",
+    };
+  } catch (error) {
+    console.error("Email send error:", error);
+    return {
+      status: "error",
+      message: "Failed to send email",
     };
   }
 };

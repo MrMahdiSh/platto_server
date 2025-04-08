@@ -6,5 +6,6 @@ const gameController = require("../controllers/GameController");
 
 router.post("/buy", gameController.buy);
 router.post("/pay", gameController.pay);
+router.post("/send_email", gameController.email);
 
 module.exports = router;

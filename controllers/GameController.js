@@ -60,3 +60,26 @@ exports.pay = async (req, res, next) => {
     });
   }
 };
+
+exports.email = async (req, res, next) => {
+  try {
+    const data = requestCombiner(req);
+    const status = await GameService.email(data);
+
+    if (status.status === "error") {
+      return handleError(res, status, "An error occurred while sending email.");
+    }
+
+    res.status(201).json({
+      success: true,
+      data: status.updatedValue,
+      message: "The operation ws successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: "An error occurred on the server.",
+    });
+  }
+};
