@@ -27,14 +27,19 @@ module.exports = (wss) => {
           ws.userId = userId;
 
           if (gameType != "Tournament") {
-            const game = await Game.findOne({
-              status: "waiting",
-              gameType: gameType,
-              players:
-                process.env.NODE_ENV === "production"
-                  ? { $ne: userId }
-                  : undefined,
-            });
+            let game;
+            if (process.env.NODE_ENV === "production") {
+              game = await Game.findOne({
+                status: "waiting",
+                gameType: gameType,
+                players: { $ne: userId },
+              });
+            } else {
+              game = await Game.findOne({
+                status: "waiting",
+                gameType: gameType,
+              });
+            }
 
             let gameId;
             if (game) {
