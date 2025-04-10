@@ -163,13 +163,14 @@ module.exports = (wss) => {
               await newTournament.save();
             }
           }
-        } else if (eventType == "sync_server") {
+        } else if (eventType == "cue_pos_sync_server") {
           const { gameId, whiteBallPosition, cuePosition, cueRotation } = data;
+          console.log(data);
           broadcastToRoom(
             gameId,
             JSON.stringify({
-              eventType: gameId + "_sync_client",
-              data: { whiteBallPosition, cuePosition, cueRotation },
+              eventType: "cue_pos_sync",
+              data: { whiteBallPosition, cuePosition, cueRotation, gameId },
             }),
             ws // Broadcast sync to all in the room
           );
