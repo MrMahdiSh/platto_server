@@ -186,6 +186,17 @@ module.exports = (wss) => {
             }),
             ws
           );
+        } else if (eventType == "ball_pos_sync_server") {
+          const { gameId, ballId, ballPosition, ballRotation, ballVelocity } =
+            data;
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({
+              eventType: "ball_pos_sync",
+              data: { ballId, ballPosition, ballRotation, ballVelocity },
+            }),
+            ws
+          );
         }
       } catch (err) {
         console.error("Error processing message:", err);
