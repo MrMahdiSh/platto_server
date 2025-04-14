@@ -187,13 +187,38 @@ module.exports = (wss) => {
             ws
           );
         } else if (eventType == "ball_pos_sync_server") {
-          const { gameId, ballId, ballPosition, ballRotation, ballVelocity } =
-            data;
+          const {
+            gameId,
+            ballId,
+            ballPosition,
+            ballRotation,
+            ballVelocity,
+            isLast,
+          } = data;
           broadcastToRoom(
             gameId,
             JSON.stringify({
               eventType: "ball_pos_sync",
-              data: { ballId, ballPosition, ballRotation, ballVelocity },
+              data: {
+                ballId,
+                ballPosition,
+                ballRotation,
+                ballVelocity,
+                isLast,
+              },
+            }),
+            ws
+          );
+        } else if (eventType == "phase_end_server") {
+          const { gameId, done } = data;
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({
+              eventType: "phase_end",
+              data: {
+                gameId,
+                done,
+              },
             }),
             ws
           );
