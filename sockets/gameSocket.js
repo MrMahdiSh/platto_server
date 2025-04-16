@@ -209,19 +209,6 @@ module.exports = (wss) => {
             }),
             ws
           );
-        } else if (eventType == "phase_end_server") {
-          const { gameId, done } = data;
-          broadcastToRoom(
-            gameId,
-            JSON.stringify({
-              eventType: "phase_end",
-              data: {
-                gameId,
-                done,
-              },
-            }),
-            ws
-          );
         }
       } catch (err) {
         console.error("Error processing message:", err);
