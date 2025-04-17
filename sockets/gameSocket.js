@@ -22,7 +22,7 @@ module.exports = (wss) => {
         }
 
         if (eventType === "Game") {
-          const { gameType, userId } = data;
+          const { gameType, userId, targetHost = null } = data;
 
           ws.userId = userId;
 
@@ -31,13 +31,13 @@ module.exports = (wss) => {
             if (process.env.NODE_ENV === "production") {
               game = await Game.findOne({
                 status: "waiting",
-                gameType: gameType,
+                gameType: gameType == "Friendly" ? targetHost : gameType,
                 players: { $ne: userId },
               });
             } else {
               game = await Game.findOne({
                 status: "waiting",
-                gameType: gameType,
+                gameType: gameType == "Friendly" ? targetHost : gameType,
               });
             }
 
@@ -82,6 +82,7 @@ module.exports = (wss) => {
 
               if (
                 (game.players.length == 2 && game.gameType == "Classic") ||
+                (game.players.length == 2 && game.gameType == "Friendly") ||
                 (game.players.length == 4 && game.gameType == "4Player")
               ) {
                 const response = {
@@ -251,30 +252,26 @@ module.exports = (wss) => {
             }),
             ws
           );
-        } else if ("play_friend_request_server") {
+        } else if (eventType === "play_friend_request_server") {
           const { sender, receiver, gameId } = data;
           console.log(data);
-          broadcastToRoom(
-            gameId,
+          broadcastToAll(
             JSON.stringify({
               eventType: "play_friend_request",
               data: { sender, receiver, gameId },
-            }),
-            ws
+            })
           );
-        } else if ("play_friend_request_accepted_server") {
-          const { sender, receiver, gameId } = data;
+        } else if (eventType === "play_friend_request_accepted_server") {
+          const { sender, receiver } = data;
           console.log(data);
 
           // start the game logic
-          
-          broadcastToRoom(
-            gameId,
+
+          broadcastToAll(
             JSON.stringify({
               eventType: "play_friend_request_accepted",
-              data: { sender, receiver, gameId },
-            }),
-            ws
+              data: { sender, receiver },
+            })
           );
         }
       } catch (err) {
@@ -332,6 +329,15 @@ module.exports = (wss) => {
     if (!rooms[gameId]) return;
     rooms[gameId].forEach((client) => {
       if (client !== sender && client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
+  // Send a message to all connected users
+  function broadcastToAll(message) {
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
         client.send(message);
       }
     });
