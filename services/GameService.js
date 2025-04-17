@@ -255,3 +255,68 @@ exports.friends = async (data) => {
     };
   }
 };
+
+exports.search = async (data) => {
+  try {
+    const { username } = data;
+
+    // Search for users whose username contains the input (case-insensitive)
+    const users = await User.find({
+      username: { $regex: username, $options: "i" },
+    }).select("username email -_id");
+
+    // Return the search results
+    return {
+      status: "success",
+      message: "Search results fetched!",
+      data: users,
+    };
+  } catch (error) {
+    console.error("Search error:", error);
+    return {
+      status: "error",
+      message: "Failed to perform search",
+    };
+  }
+};
+
+exports.leaderboard = async () => {
+  try {
+    // Fetch users sorted by coins and diamonds in descending order
+    const users = await User.find()
+      .sort({ "stats.totalPoints": -1 })
+      .select("username stats.totalPoints -_id")
+      .limit(10); // Limit to top 10 users based on total points
+
+    // Declare and assign places based on points
+    let leaderboard = users.map((user) => ({
+      username: user.username,
+      points: user.stats.totalPoints,
+    }));
+
+    leaderboard.sort((a, b) => b.points - a.points); // Sort by points descending
+
+    let currentPlace = 1;
+    for (let i = 0; i < leaderboard.length; i++) {
+      if (i > 0 && leaderboard[i].points === leaderboard[i - 1].points) {
+        leaderboard[i].place = leaderboard[i - 1].place; // Same place for same points
+      } else {
+        leaderboard[i].place = currentPlace;
+      }
+      currentPlace++;
+    }
+
+    // Return the leaderboard data
+    return {
+      status: "success",
+      message: "Leaderboard fetched successfully",
+      data: leaderboard,
+    };
+  } catch (error) {
+    console.error("Leaderboard error:", error);
+    return {
+      status: "error",
+      message: "Failed to fetch leaderboard",
+    };
+  }
+};
