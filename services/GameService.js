@@ -228,3 +228,30 @@ exports.email = async (data) => {
     };
   }
 };
+
+exports.friends = async (data) => {
+  try {
+    const { userId } = data;
+
+    // get user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return { status: "error", message: "User not found" };
+    }
+    // get firends
+    const friends = user.friends;
+    // return
+    return {
+      status: "success",
+      message: "Friends fetched!",
+      data: friends,
+    };
+  } catch (error) {
+    console.error("Email send error:", error);
+    return {
+      status: "error",
+      message: "Failed to send email",
+    };
+  }
+};
