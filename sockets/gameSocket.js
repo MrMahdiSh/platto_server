@@ -209,6 +209,30 @@ module.exports = (wss) => {
             }),
             ws
           );
+        } else if (eventType == "friend_invitation_server") {
+          const { sender, receiver, gameId } = data;
+          console.log(data);
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({
+              eventType: "friend_invitation",
+              data: { sender, receiver, gameId },
+            }),
+            ws
+          );
+        } else if (eventType == "friend_invitation_accept_server") {
+          const { sender, receiver } = data;
+          console.log(data);
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({
+              eventType: "friend_invitation_accept",
+              data: { sender, receiver },
+            }),
+            ws
+          );
+
+          // continue the logic on the server to save the freinds!
         }
       } catch (err) {
         console.error("Error processing message:", err);
