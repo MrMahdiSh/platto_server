@@ -209,30 +209,37 @@ module.exports = (wss) => {
             }),
             ws
           );
-        } else if (eventType == "friend_invitation_server") {
+        } else if (eventType === "friend_invitation_accept_server") {
           const { sender, receiver, gameId } = data;
-          console.log(data);
-          broadcastToRoom(
-            gameId,
-            JSON.stringify({
-              eventType: "friend_invitation",
-              data: { sender, receiver, gameId },
-            }),
-            ws
-          );
-        } else if (eventType == "friend_invitation_accept_server") {
-          const { sender, receiver } = data;
-          console.log(data);
+
+          const senderUser = await User.findOne({ username: sender });
+          const receiverUser = await User.findOne({ username: receiver });
+
+          if (!senderUser || !receiverUser) {
+            console.log("One of the users not found");
+            return;
+          }
+
+          // Prevent duplicates
+          if (!receiverUser.friends.includes(senderUser._id)) {
+            receiverUser.friends.push(senderUser._id);
+          }
+
+          if (!senderUser.friends.includes(receiverUser._id)) {
+            senderUser.friends.push(receiverUser._id);
+          }
+
+          await receiverUser.save();
+          await senderUser.save();
+
           broadcastToRoom(
             gameId,
             JSON.stringify({
               eventType: "friend_invitation_accept",
-              data: { sender, receiver },
+              data: { sender, receiver, gameId },
             }),
             ws
           );
-
-          // continue the logic on the server to save the freinds!
         }
       } catch (err) {
         console.error("Error processing message:", err);
