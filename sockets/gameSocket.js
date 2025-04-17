@@ -232,12 +232,12 @@ module.exports = (wss) => {
           }
 
           // Prevent duplicates
-          if (!receiverUser.friends.includes(senderUser._id)) {
-            receiverUser.friends.push(senderUser._id);
+          if (!receiverUser.friends.includes(senderUser.username)) {
+            receiverUser.friends.push(senderUser.username);
           }
 
-          if (!senderUser.friends.includes(receiverUser._id)) {
-            senderUser.friends.push(receiverUser._id);
+          if (!senderUser.friends.includes(receiverUser.username)) {
+            senderUser.friends.push(receiverUser.username);
           }
 
           await receiverUser.save();
@@ -247,6 +247,31 @@ module.exports = (wss) => {
             gameId,
             JSON.stringify({
               eventType: "friend_invitation_accept",
+              data: { sender, receiver, gameId },
+            }),
+            ws
+          );
+        } else if ("play_friend_request_server") {
+          const { sender, receiver, gameId } = data;
+          console.log(data);
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({
+              eventType: "play_friend_request",
+              data: { sender, receiver, gameId },
+            }),
+            ws
+          );
+        } else if ("play_friend_request_accepted_server") {
+          const { sender, receiver, gameId } = data;
+          console.log(data);
+
+          // start the game logic
+          
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({
+              eventType: "play_friend_request_accepted",
               data: { sender, receiver, gameId },
             }),
             ws
