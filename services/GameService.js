@@ -280,8 +280,9 @@ exports.search = async (data) => {
   }
 };
 
-exports.leaderboard = async () => {
+exports.leaderboard = async (data) => {
   try {
+    const { userId } = data;
     // Fetch users sorted by coins and diamonds in descending order
     const users = await User.find()
       .sort({ "stats.totalPoints": -1 })
@@ -306,11 +307,21 @@ exports.leaderboard = async () => {
       currentPlace++;
     }
 
-    // Return the leaderboard data
+    // Calculate the current user's place
+    const allUsers = await User.find().sort({ "stats.totalPoints": -1 });
+    let userPlace = null;
+    for (let i = 0; i < allUsers.length; i++) {
+      if (allUsers[i]._id.toString() === userId) {
+        userPlace = i + 1;
+        break;
+      }
+    }
+
+    // Return both leaderboard and userPlace
     return {
       status: "success",
       message: "Leaderboard fetched successfully",
-      data: leaderboard,
+      data: { leaderboard, userPlace },
     };
   } catch (error) {
     console.error("Leaderboard error:", error);
