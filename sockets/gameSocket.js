@@ -263,9 +263,6 @@ module.exports = (wss) => {
           );
         } else if (eventType === "play_friend_request_accepted_server") {
           const { sender, receiver } = data;
-          console.log(data);
-
-          // start the game logic
 
           broadcastToAll(
             JSON.stringify({
@@ -273,6 +270,22 @@ module.exports = (wss) => {
               data: { sender, receiver },
             })
           );
+        } else if (eventType === "win_server") {
+          const { gameId, userName } = data;
+          // find user and game
+          const game = await Game.findById(gameId);
+            const user = await User.findOne({ username: userName });
+          if (!game) return;
+          // update game
+          game.winner = user._id;
+          game.status = "completed";
+          await game.save();
+          // update user
+          user.coins = user.coins + 5;
+          user.stats.totalPoints = user.stats.totalPoints + 5;
+          user.stats.gamesPlayed = user.stats.gamesPlayed + 1;
+          user.stats.gamesWon = user.stats.gamesWon + 1;
+          await user.save();
         }
       } catch (err) {
         console.error("Error processing message:", err);

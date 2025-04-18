@@ -19,6 +19,10 @@ const gameSchema = new mongoose.Schema({
       isCorrect: Boolean,
     },
   ],
+  winner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
   gameType: String,
   status: {
     type: String,
