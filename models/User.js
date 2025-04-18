@@ -89,6 +89,11 @@ const userSchema = new mongoose.Schema(
       },
     ],
     stats: {
+      tournamentsWon: {
+        type: Number,
+        default: 0,
+        min: [0, "Tournaments Won cannot be negative"],
+      },
       gamesPlayed: {
         type: Number,
         default: 0,

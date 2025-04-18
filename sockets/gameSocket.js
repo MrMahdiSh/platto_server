@@ -134,24 +134,92 @@ module.exports = (wss) => {
             });
 
             if (tournament) {
-              tournament.players.push(userId);
+              // THERE IS A TOURNAMENT WAITING FOR US :)
+              // Save the WS connection for later usage
               if (!rooms[tournament._id]) rooms[tournament._id] = [];
               rooms[tournament._id].push(ws);
 
-              if (tournament.players.count == tournamentPlayers) {
-                const players = await Promise.all(
-                  tournament.players.map(async (playerId) => {
-                    const player = await User.findById(playerId);
-                    return {
-                      userId: player._id,
-                      username: player.username,
-                      profileImageUrl: player.profileImageUrl,
-                    };
-                  })
-                );
+              // push our self into the players
+              tournament.players.push(userId);
+
+              // Ok now if you reach the number of players, start the game and if not wait
+              console.log(
+                "tournomant players => " +
+                  tournament.players.length +
+                  "should be => " +
+                  tournamentPlayers
+              );
+              if (tournament.players.length == tournamentPlayers) {
+                // first calculate the number of the games should we create
+                const firstRoundGamesCount = tournamentPlayers / 2;
+
+                for (let i = 0; i < firstRoundGamesCount; i++) {
+                  // CREATE THE GAME AND TELL OTHER ITS STARTED
+                  // Get Players
+                  const PlayerOneUser = tournament.players[i * 2];
+                  const PlayerTwoUser = tournament.players[i * 2 + 1];
+                  const game = new Game({
+                    players: [PlayerOneUser, PlayerTwoUser],
+                    gameType: gameType,
+                    status: "in-progress",
+                    startTime: new Date(),
+                  });
+
+                  await game.save();
+
+                  // SEND GAME DETAIL (PREPARE USER TO JOIN GAME)
+                  // send the game id to the players
+                  const response = {
+                    eventType: "gameDetail",
+                    data: { game_id: game._id },
+                  };
+
+                  // send for first player
+                  const firstPlayerWS = rooms[tournament._id][i * 2];
+                  firstPlayerWS.send(JSON.stringify(response));
+
+                  // send for second one
+                  const secondPlayerWS = rooms[tournament._id][i * 2 + 1];
+                  secondPlayerWS.send(JSON.stringify(response));
+
+                  // CREATE ROOM AND ADD GUYS TO THEM FOR SPECIFIC GAME
+                  if (!rooms[game._id]) rooms[game._id] = [];
+                  rooms[game._id].push(firstPlayerWS);
+                  rooms[game._id].push(secondPlayerWS);
+
+                  const players = await Promise.all(
+                    [PlayerOneUser, PlayerTwoUser].map(async (playerId) => {
+                      const player = await User.findById(playerId);
+                      return {
+                        userId: player._id,
+                        username: player.username,
+                        profileImageUrl: player.profileImageUrl,
+                      };
+                    })
+                  );
+
+                  const gameStartedResponse = {
+                    eventType: "gameStarted",
+                    data: {
+                      message: `Tournament game has started!`,
+                      players: players,
+                      gameId: game._id,
+                    },
+                  };
+
+                  // SEND THE GAME STARTED MESSAGE TO THE GUYS
+                  // send for first player
+                  firstPlayerWS.send(JSON.stringify(gameStartedResponse));
+
+                  // send for second one
+                  secondPlayerWS.send(JSON.stringify(gameStartedResponse));
+
+                  tournament.games.push(game._id);
+                }
               }
               await tournament.save();
             } else {
+              // create a new tournament
               const newTournament = new Tournament({
                 players: [userId],
                 gameType: gameType,
@@ -159,9 +227,148 @@ module.exports = (wss) => {
                 startTime: new Date(),
               });
 
+              // create the first game room
               if (!rooms[newTournament._id]) rooms[newTournament._id] = [];
               rooms[newTournament._id].push(ws);
+              // save tournament
               await newTournament.save();
+            }
+          }
+        } else if (eventType == "tournament_user_win") {
+          const { tournamentId, winnerId } = data;
+          const tournament = await Tournament.findById(tournamentId);
+
+          if (!tournament) {
+            console.error("Tournament not found:", tournamentId);
+            return;
+          }
+          // Determine the number of games that must be played
+          const totalGamesRequired = tournamentPlayers - 1;
+
+          console.log(
+            `Tournament ${tournamentId} has ${tournament.games.length} games played out of ${totalGamesRequired}.`
+          );
+
+          const completedGames = await Game.countDocuments({
+            _id: { $in: tournament.games },
+            players: { $size: 2 },
+          });
+
+          if (completedGames >= totalGamesRequired) {
+            console.log("Tournament is complete. Declaring the winner...");
+
+            tournament.status = "completed";
+            tournament.winner = winnerId;
+
+            const winner = await User.findById(winnerId);
+            if (winner) {
+              winner.coins += 40;
+              winner.stats.tournamentsWon =
+                (winner.stats.tournamentsWon || 0) + 1;
+              await winner.save();
+            }
+
+            const tournamentCompleteResponse = {
+              eventType: "tournamentComplete",
+              data: {
+                message: `Tournament is complete! Winner is ${winner.username}.`,
+                winner: {
+                  userId: winner._id,
+                  username: winner.username,
+                  profileImageUrl: winner.profileImageUrl,
+                },
+              },
+            };
+
+            broadcastToRoom(
+              tournamentId,
+              JSON.stringify(tournamentCompleteResponse)
+            );
+          } else {
+            console.log("Checking for games with a single player waiting...");
+            const singlePlayerGame = await Game.findOne({
+              _id: { $in: tournament.games },
+              status: "waiting",
+              players: { $size: 1 },
+            });
+
+            if (singlePlayerGame) {
+              // create the room
+              if (!rooms[singlePlayerGame._id])
+                rooms[singlePlayerGame._id] = [];
+              rooms[singlePlayerGame._id].push(ws);
+
+              console.log(
+                "Found a game with a single player waiting. Joining that game."
+              );
+              singlePlayerGame.players.push(winnerId);
+              await singlePlayerGame.save();
+
+              ws.send(
+                JSON.stringify({
+                  eventType: "gameDetail",
+                  data: { game_id: singlePlayerGame._id },
+                })
+              );
+
+              const players = await Promise.all(
+                singlePlayerGame.players.map(async (playerId) => {
+                  const player = await User.findById(playerId);
+                  return {
+                    userId: player._id,
+                    username: player.username,
+                    profileImageUrl: player.profileImageUrl,
+                  };
+                })
+              );
+
+              const gameStartedResponse = {
+                eventType: "gameStarted",
+                data: {
+                  message: `Tournament game has started!`,
+                  players: players,
+                  gameId: singlePlayerGame._id,
+                  gameNumber: completedGames,
+                  allGames: totalGamesRequired,
+                },
+              };
+
+              broadcastToRoom(
+                tournament._id,
+                JSON.stringify(gameStartedResponse)
+              );
+            } else {
+              console.log(
+                "No single player games found. Creating a new game..."
+              );
+              const newGame = new Game({
+                players: [winnerId],
+                gameType: tournament.gameType,
+                status: "waiting",
+                startTime: new Date(),
+              });
+
+              await newGame.save();
+
+              tournament.games.push(newGame._id);
+
+              await tournament.save();
+
+              // create rooms
+              if (!rooms[newGame._id]) rooms[newGame._id] = [];
+              rooms[newGame._id].push(ws);
+
+              console.log(
+                "New game created for the tournament with ID:",
+                newGame._id
+              );
+
+              ws.send(
+                JSON.stringify({
+                  eventType: "gameDetail",
+                  data: { game_id: newGame._id },
+                })
+              );
             }
           }
         } else if (eventType == "cue_pos_sync_server") {
@@ -274,7 +481,7 @@ module.exports = (wss) => {
           const { gameId, userName } = data;
           // find user and game
           const game = await Game.findById(gameId);
-            const user = await User.findOne({ username: userName });
+          const user = await User.findOne({ username: userName });
           if (!game) return;
           // update game
           game.winner = user._id;
@@ -422,11 +629,26 @@ module.exports = (wss) => {
       });
 
     // Handle tournament disconnection
-    Tournament.findOne({ players: id, status: "in-progress" })
+    Tournament.findOne({
+      players: id,
+      status: { $in: ["in-progress", "waiting"] },
+    })
       .then(async (tournament) => {
         if (tournament) {
-          // tournament.status = "completed";
-          // await tournament.save();
+          if (tournament.status === "in-progress") {
+            // tournament.status = "completed";
+            // await tournament.save();
+            // teh logic of when a user disconnect
+          } else if (tournament.status === "waiting") {
+            tournament.players = tournament.players.filter(
+              (playerId) => playerId.toString() !== id.toString()
+            );
+            if (tournament.players.length === 0) {
+              await Tournament.deleteOne({ _id: tournament._id });
+            } else {
+              await tournament.save();
+            }
+          }
         }
       })
       .catch((err) => {

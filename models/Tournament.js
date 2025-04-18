@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const TournamentSchema = new mongoose.Schema({
   players: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   gameType: String,
+  games: [{ type: mongoose.Schema.Types.ObjectId, ref: "Game" }],
   status: {
     type: String,
     enum: ["waiting", "in-progress", "completed"],
