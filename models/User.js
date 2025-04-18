@@ -44,7 +44,7 @@ const userSchema = new mongoose.Schema(
     },
     coins: {
       type: Number,
-      default: 0,
+      default: 50,
       min: [0, "Coins cannot be negative"],
     },
     bestPlace: {
