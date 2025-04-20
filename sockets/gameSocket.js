@@ -5,7 +5,8 @@ const User = require("../models/User");
 const Question = require("../models/Question");
 
 module.exports = (wss) => {
-  const rooms = {}; // Object to store game-specific connections, using gameId as the key
+  const rooms = {};
+  const tournamentWS = {};
   const tournamentPlayers = 4;
   wss.on("connection", (ws) => {
     console.log("New player connected");
@@ -136,8 +137,9 @@ module.exports = (wss) => {
             if (tournament) {
               // THERE IS A TOURNAMENT WAITING FOR US :)
               // Save the WS connection for later usage
-              if (!rooms[tournament._id]) rooms[tournament._id] = [];
-              rooms[tournament._id].push(ws);
+              if (!tournamentWS[tournament._id])
+                tournamentWS[tournament._id] = [];
+              tournamentWS[tournament._id].push(ws);
 
               // push our self into the players
               tournament.players.push(userId);
@@ -152,6 +154,8 @@ module.exports = (wss) => {
               if (tournament.players.length == tournamentPlayers) {
                 // first calculate the number of the games should we create
                 const firstRoundGamesCount = tournamentPlayers / 2;
+
+                tournament.status = "in-progress";
 
                 for (let i = 0; i < firstRoundGamesCount; i++) {
                   // CREATE THE GAME AND TELL OTHER ITS STARTED
@@ -175,11 +179,12 @@ module.exports = (wss) => {
                   };
 
                   // send for first player
-                  const firstPlayerWS = rooms[tournament._id][i * 2];
+                  const firstPlayerWS = tournamentWS[tournament._id][i * 2];
                   firstPlayerWS.send(JSON.stringify(response));
 
                   // send for second one
-                  const secondPlayerWS = rooms[tournament._id][i * 2 + 1];
+                  const secondPlayerWS =
+                    tournamentWS[tournament._id][i * 2 + 1];
                   secondPlayerWS.send(JSON.stringify(response));
 
                   // CREATE ROOM AND ADD GUYS TO THEM FOR SPECIFIC GAME
@@ -204,6 +209,7 @@ module.exports = (wss) => {
                       message: `Tournament game has started!`,
                       players: players,
                       gameId: game._id,
+                      tournamentId: tournament._id,
                     },
                   };
 
@@ -228,8 +234,9 @@ module.exports = (wss) => {
               });
 
               // create the first game room
-              if (!rooms[newTournament._id]) rooms[newTournament._id] = [];
-              rooms[newTournament._id].push(ws);
+              if (!tournamentWS[newTournament._id])
+                tournamentWS[newTournament._id] = [];
+              tournamentWS[newTournament._id].push(ws);
               // save tournament
               await newTournament.save();
             }
@@ -334,7 +341,7 @@ module.exports = (wss) => {
               };
 
               broadcastToRoom(
-                tournament._id,
+                singlePlayerGame._id,
                 JSON.stringify(gameStartedResponse)
               );
             } else {
@@ -373,7 +380,6 @@ module.exports = (wss) => {
           }
         } else if (eventType == "cue_pos_sync_server") {
           const { gameId, whiteBallPosition, cuePosition, cueRotation } = data;
-          console.log(data);
           broadcastToRoom(
             gameId,
             JSON.stringify({
