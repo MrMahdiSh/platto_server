@@ -8,6 +8,12 @@ module.exports = (wss) => {
   const rooms = {};
   const tournamentWS = {};
   const tournamentPlayers = 4;
+  const gameCupCost = 5;
+  const simpleGamesWinnerCoinPrize = 5;
+  const simpleGamesWinnerCupPrize = 5;
+  const tournamentGamesWinnerCoinsPrize = 40;
+  const tournamentGamesWinnerCupPrize = 40;
+
   wss.on("connection", (ws) => {
     console.log("New player connected");
 
@@ -61,16 +67,6 @@ module.exports = (wss) => {
               console.log(
                 "Game updated to in-progress. Fetching player details..."
               );
-              const players = await Promise.all(
-                game.players.map(async (playerId) => {
-                  const player = await User.findById(playerId);
-                  return {
-                    userId: player._id,
-                    username: player.username,
-                    profileImageUrl: player.profileImageUrl,
-                  };
-                })
-              );
 
               console.log("Players fetched. Sending gameStarted event...");
 
@@ -86,6 +82,23 @@ module.exports = (wss) => {
                 (game.players.length == 2 && game.gameType == "Friendly") ||
                 (game.players.length == 4 && game.gameType == "4Player")
               ) {
+                const players = await Promise.all(
+                  game.players.map(async (playerId) => {
+                    const player = await User.findById(playerId);
+                    const afterReduce = player.stats.totalPoints - gameCupCost;
+                    if (afterReduce >= 0) {
+                      player.stats.totalPoints -= gameCupCost;
+                    } else {
+                      player.stats.totalPoints = 0;
+                    }
+                    await player.save();
+                    return {
+                      userId: player._id,
+                      username: player.username,
+                      profileImageUrl: player.profileImageUrl,
+                    };
+                  })
+                );
                 const response = {
                   eventType: "gameStarted",
                   data: {
@@ -193,8 +206,16 @@ module.exports = (wss) => {
                   rooms[game._id].push(secondPlayerWS);
 
                   const players = await Promise.all(
-                    [PlayerOneUser, PlayerTwoUser].map(async (playerId) => {
+                    tournament.players.map(async (playerId) => {
                       const player = await User.findById(playerId);
+                      const afterReduce =
+                        player.stats.totalPoints - gameCupCost;
+                      if (afterReduce >= 0) {
+                        player.stats.totalPoints -= gameCupCost;
+                      } else {
+                        player.stats.totalPoints = 0;
+                      }
+                      await player.save();
                       return {
                         userId: player._id,
                         username: player.username,
@@ -269,7 +290,8 @@ module.exports = (wss) => {
 
             const winner = await User.findById(winnerId);
             if (winner) {
-              winner.coins += 40;
+              winner.coins += tournamentGamesWinnerCoinsPrize;
+              winner.stats.totalPoints += tournamentGamesWinnerCupPrize;
               winner.stats.tournamentsWon =
                 (winner.stats.tournamentsWon || 0) + 1;
               await winner.save();
@@ -508,10 +530,10 @@ module.exports = (wss) => {
           game.status = "completed";
           await game.save();
           // update user
-          user.coins = user.coins + 5;
-          user.stats.totalPoints = user.stats.totalPoints + 5;
-          user.stats.gamesPlayed = user.stats.gamesPlayed + 1;
-          user.stats.gamesWon = user.stats.gamesWon + 1;
+          user.coins += simpleGamesWinnerCoinPrize;
+          user.stats.totalPoints += simpleGamesWinnerCupPrize + gameCupCost;
+          user.stats.gamesPlayed += 1;
+          user.stats.gamesWon += 1;
           await user.save();
         }
       } catch (err) {
