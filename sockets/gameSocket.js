@@ -34,6 +34,11 @@ module.exports = (wss) => {
           ws.userId = userId;
 
           if (gameType != "Tournament") {
+            console.log(
+              "Its not a tournamnet and now we wanna play a " +
+                gameType +
+                "Game"
+            );
             let game;
             if (process.env.NODE_ENV === "production") {
               game = await Game.findOne({
@@ -79,7 +84,7 @@ module.exports = (wss) => {
 
               if (
                 (game.players.length == 2 && game.gameType == "Classic") ||
-                (game.players.length == 2 && game.gameType == "Friendly") ||
+                (game.players.length == 2 && gameType == "Friendly") ||
                 (game.players.length == 4 && game.gameType == "4Player")
               ) {
                 const players = await Promise.all(
@@ -120,7 +125,7 @@ module.exports = (wss) => {
               console.log("No opponent found. Creating a new game...");
               const newGame = new Game({
                 players: [userId],
-                gameType: gameType,
+                gameType: gameType == "Friendly" ? targetHost : gameType,
                 status: "waiting",
                 startTime: new Date(),
               });
@@ -206,7 +211,7 @@ module.exports = (wss) => {
                   rooms[game._id].push(secondPlayerWS);
 
                   const players = await Promise.all(
-                    tournament.players.map(async (playerId) => {
+                    [PlayerOneUser, PlayerTwoUser].map(async (playerId) => {
                       const player = await User.findById(playerId);
                       const afterReduce =
                         player.stats.totalPoints - gameCupCost;
