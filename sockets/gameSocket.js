@@ -423,6 +423,20 @@ module.exports = (wss) => {
             }),
             ws
           );
+        } else if (eventType == "message_server") {
+          const { sender, gameId, message } = data;
+          broadcastToRoom(
+            gameId,
+            JSON.stringify({
+              eventType: "message",
+              data: {
+                sender,
+                gameId,
+                message,
+              },
+            }),
+            ws
+          );
         } else if (eventType == "friend_invitation_server") {
           const { sender, receiver, gameId } = data;
           console.log(data);
