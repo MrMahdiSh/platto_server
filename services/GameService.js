@@ -300,19 +300,30 @@ exports.leaderboard = async (data) => {
     let currentPlace = 1;
     for (let i = 0; i < leaderboard.length; i++) {
       if (i > 0 && leaderboard[i].points === leaderboard[i - 1].points) {
-        leaderboard[i].place = leaderboard[i - 1].place; // Same place for same points
+        leaderboard[i].place = leaderboard[i - 1].place;
       } else {
         leaderboard[i].place = currentPlace;
       }
       currentPlace++;
     }
 
-    // Calculate the current user's place
+    // Calculate the current user's place (same logic with shared places)
     const allUsers = await User.find().sort({ "stats.totalPoints": -1 });
     let userPlace = null;
+    let currentGlobalPlace = 1;
+
     for (let i = 0; i < allUsers.length; i++) {
+      if (
+        i > 0 &&
+        allUsers[i].stats.totalPoints === allUsers[i - 1].stats.totalPoints
+      ) {
+        // same as previous, keep same place
+      } else {
+        currentGlobalPlace = i + 1;
+      }
+
       if (allUsers[i]._id.toString() === userId) {
-        userPlace = i + 1;
+        userPlace = currentGlobalPlace;
         break;
       }
     }
