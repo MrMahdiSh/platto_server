@@ -296,7 +296,10 @@ module.exports = (wss) => {
             const winner = await User.findById(winnerId);
             if (winner) {
               winner.coins += tournamentGamesWinnerCoinsPrize;
-              winner.stats.totalPoints += tournamentGamesWinnerCupPrize;
+              winner.stats.totalPoints +=
+                winner.stats.totalPoints !== 0
+                  ? tournamentGamesWinnerCupPrize + gameCupCost
+                  : tournamentGamesWinnerCupPrize;
               winner.stats.tournamentsWon =
                 (winner.stats.tournamentsWon || 0) + 1;
               await winner.save();
@@ -536,7 +539,10 @@ module.exports = (wss) => {
           await game.save();
           // update user
           user.coins += simpleGamesWinnerCoinPrize;
-          user.stats.totalPoints += simpleGamesWinnerCupPrize + gameCupCost;
+          user.stats.totalPoints +=
+            user.stats.totalPoints !== 0
+              ? simpleGamesWinnerCupPrize + gameCupCost
+              : simpleGamesWinnerCupPrize;
           user.stats.gamesPlayed += 1;
           user.stats.gamesWon += 1;
           await user.save();
