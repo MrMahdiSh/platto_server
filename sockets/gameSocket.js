@@ -8,7 +8,7 @@ module.exports = (wss) => {
   const rooms = {};
   const tournamentWS = {};
   const tournamentPlayers = 4;
-  const gameCupCost = 5;
+  const gameCupCost = 3;
   const simpleGamesWinnerCoinPrize = 5;
   const simpleGamesWinnerCupPrize = 5;
   const tournamentGamesWinnerCoinsPrize = 40;
@@ -92,7 +92,11 @@ module.exports = (wss) => {
                     const player = await User.findById(playerId);
                     const afterReduce = player.stats.totalPoints - gameCupCost;
                     if (afterReduce >= 0) {
-                      player.stats.totalPoints -= gameCupCost;
+                      if (game.gameType != "4Player") {
+                        player.stats.totalPoints -= gameCupCost + 1;
+                      } else {
+                        player.stats.totalPoints -= gameCupCost;
+                      }
                     } else {
                       player.stats.totalPoints = 0;
                     }
@@ -537,12 +541,30 @@ module.exports = (wss) => {
           game.winner = user._id;
           game.status = "completed";
           await game.save();
-          // update user
-          user.coins += simpleGamesWinnerCoinPrize;
+          // give the prize
+
+          var cupsShouldAdd = 0;
+          var coinsShouldAdd = 0;
+
+          switch (game.gameType) {
+            case "Classic":
+              cupsShouldAdd = 5;
+              coinsShouldAdd = 1;
+              break;
+            case "4Player":
+              cupsShouldAdd = 7 + gameCupCost + 1;
+              coinsShouldAdd = 1;
+              break;
+
+            default:
+              cupsShouldAdd = 3;
+              break;
+          }
+          user.coins += coinsShouldAdd;
           user.stats.totalPoints +=
             user.stats.totalPoints !== 0
-              ? simpleGamesWinnerCupPrize + gameCupCost
-              : simpleGamesWinnerCupPrize;
+              ? cupsShouldAdd + gameCupCost
+              : cupsShouldAdd;
           user.stats.gamesPlayed += 1;
           user.stats.gamesWon += 1;
           await user.save();
