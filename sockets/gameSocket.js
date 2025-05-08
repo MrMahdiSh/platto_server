@@ -100,6 +100,7 @@ module.exports = (wss) => {
                     } else {
                       player.stats.totalPoints = 0;
                     }
+                    player.stats.gamesPlayed++;
                     await player.save();
                     return {
                       userId: player._id,
