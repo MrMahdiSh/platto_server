@@ -156,3 +156,111 @@ exports.leaderboard = async (req, res, next) => {
     });
   }
 };
+
+exports.friendsRequests = async (req, res, next) => {
+  try {
+    const data = requestCombiner(req);
+    const status = await GameService.friendsRequest(data);
+
+    if (status.status === "error") {
+      return handleError(
+        res,
+        status,
+        "An error occurred while listing friend requests."
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      data: status.data,
+      message: "Friend requests listed successfully!",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: "An error occurred on the server.",
+    });
+  }
+};
+
+// Accept Friend Request
+exports.acceptFriendRequest = async (req, res, next) => {
+  try {
+    const data = requestCombiner(req);
+    const status = await GameService.acceptFriendRequest(data);
+
+    if (status.status === "error") {
+      return handleError(
+        res,
+        status,
+        "An error occurred while accepting the friend request."
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Friend request accepted successfully!",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: "An error occurred on the server.",
+    });
+  }
+};
+
+// Reject Friend Request
+exports.rejectFriendRequest = async (req, res, next) => {
+  try {
+    const data = requestCombiner(req);
+    const status = await GameService.rejectFriendRequest(data);
+
+    if (status.status === "error") {
+      return handleError(
+        res,
+        status,
+        "An error occurred while rejecting the friend request."
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Friend request rejected successfully!",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: "An error occurred on the server.",
+    });
+  }
+};
+
+exports.createFriendRequest = async (req, res, next) => {
+  try {
+    const data = requestCombiner(req);
+    const status = await GameService.createFriendRequest(data);
+
+    if (status.status === "error") {
+      return handleError(
+        res,
+        status,
+        "An error occurred while creating the friend request."
+      );
+    }
+
+    res.status(201).json({
+      success: true,
+      data: status.data,
+      message: "Friend request created successfully!",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: "An error occurred on the server.",
+    });
+  }
+};
