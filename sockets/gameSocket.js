@@ -3,6 +3,11 @@ const Game = require("../models/Game");
 const Tournament = require("../models/Tournament");
 const User = require("../models/User");
 const Question = require("../models/Question");
+const Friends = require("../models/Friends");
+const {
+  acceptFriendRequest,
+  rejectFriendRequest,
+} = require("../services/GameService");
 
 module.exports = (wss) => {
   const rooms = {};
@@ -474,7 +479,26 @@ module.exports = (wss) => {
           );
         } else if (eventType == "friend_invitation_server") {
           const { sender, receiver, gameId } = data;
-          console.log(data);
+
+          const senderUser = await User.findOne({ username: sender });
+          const receiverUser = await User.findOne({ username: receiver });
+
+          const existingRequest = await Friends.findOne({
+            $or: [
+              { from: senderUser, to: receiverUser },
+              { from: receiverUser, to: senderUser },
+            ],
+          });
+
+          if (existingRequest) {
+            return;
+          }
+
+          const newFriendRequest = await Friends.create({
+            from: senderUser,
+            to: receiverUser,
+          });
+
           broadcastToRoom(
             gameId,
             JSON.stringify({
@@ -506,6 +530,9 @@ module.exports = (wss) => {
           await receiverUser.save();
           await senderUser.save();
 
+          // save to friends request list
+          acceptFriendRequest({ sender, receiver });
+
           broadcastToRoom(
             gameId,
             JSON.stringify({
@@ -514,6 +541,19 @@ module.exports = (wss) => {
             }),
             ws
           );
+        } else if (eventType === "friend_invitation_reject_server") {
+          const { sender, receiver } = data;
+
+          const senderUser = await User.findOne({ username: sender });
+          const receiverUser = await User.findOne({ username: receiver });
+
+          if (!senderUser || !receiverUser) {
+            console.log("One of the users not found");
+            return;
+          }
+
+          // save to friends request list
+          rejectFriendRequest({ sender, receiver });
         } else if (eventType === "play_friend_request_server") {
           const { sender, receiver, gameId } = data;
           console.log(data);

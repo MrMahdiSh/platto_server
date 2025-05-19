@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const Item = require("../models/Item");
+const Friends = require("../models/Friends");
 const nodemailer = require("nodemailer");
 
 exports.buy = async (data) => {
@@ -339,6 +340,133 @@ exports.leaderboard = async (data) => {
     return {
       status: "error",
       message: "Failed to fetch leaderboard",
+    };
+  }
+};
+
+exports.friendsRequest = async (data) => {
+  try {
+    const { userId } = data;
+
+    const friendsList = await Friends.find({ to: userId, status: "pending" })
+      .populate("from", "username profileImageUrl")
+      .select("from status createdAt");
+    if (!friendsList.length) {
+      return {
+        status: "success",
+        message: "No incoming friend requests found.",
+        data: [],
+      };
+    }
+
+    const formattedFriendsList = friendsList.map((friend) => ({
+      username: friend.from.username,
+      profileImageUrl: friend.from.profileImageUrl,
+      status: friend.status,
+      createdAt: friend.createdAt,
+    }));
+
+    // Return the friends list
+    return {
+      status: "success",
+      message: "Friends fetched!",
+      data: formattedFriendsList,
+    };
+  } catch (error) {
+    console.error("Fetch friends error:", error);
+    return {
+      status: "error",
+      message: "Failed to fetch friends.",
+    };
+  }
+};
+
+// Accept Friend Request
+exports.acceptFriendRequest = async (data) => {
+  try {
+    const { sender, receiver } = data;
+
+    const senderUser = await User.findOne({ username: sender });
+    const receiverUser = await User.findOne({ username: receiver });
+
+    console.log(data);
+
+    // Check if the friend request exists (user is the "to" side)
+    const friendRequest = await Friends.findOne({
+      from: senderUser._id,
+      to: receiverUser._id,
+    });
+
+    if (!friendRequest) {
+      return {
+        status: "error",
+        message: "Friend request not found or already accepted.",
+      };
+    }
+
+    // Update the status to accepted
+    friendRequest.status = "accepted";
+    await friendRequest.save();
+
+    // add to friends array of User
+    if (!receiverUser.friends.includes(senderUser.username)) {
+      receiverUser.friends.push(senderUser.username);
+    }
+
+    if (!senderUser.friends.includes(receiverUser.username)) {
+      senderUser.friends.push(receiverUser.username);
+    }
+
+    await receiverUser.save();
+    await senderUser.save();
+
+    return {
+      status: "success",
+      message: "Friend request accepted!",
+    };
+  } catch (error) {
+    console.error("Accept friend request error:", error);
+    return {
+      status: "error",
+      message: "Failed to accept friend request.",
+    };
+  }
+};
+
+// Reject Friend Request
+exports.rejectFriendRequest = async (data) => {
+  try {
+    const { sender, receiver } = data;
+
+    const senderUser = await User.findOne({ username: sender });
+    const receiverUser = await User.findOne({ username: receiver });
+
+    // Check if the friend request exists (user is the "to" side)
+    const friendRequest = await Friends.findOne({
+      from: senderUser,
+      to: receiverUser,
+    });
+
+    if (!friendRequest) {
+      return {
+        status: "error",
+        message: "Friend request not found or already rejected.",
+      };
+    }
+
+    // Update the status to rejected
+    friendRequest.status = "rejected";
+    await friendRequest.save();
+
+    return {
+      status: "success",
+      message: "Friend request rejected!",
+    };
+  } catch (error) {
+    console.error("Reject friend request error:", error);
+    return {
+      status: "error",
+      message: "Failed to reject friend request.",
     };
   }
 };
