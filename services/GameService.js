@@ -526,14 +526,20 @@ async function getTopPlayers(rangeFn, userId, limit = 10) {
     },
   ]);
 
-  const userRank =
-    allScores.findIndex((u) => u._id.toString() === userId.toString()) + 1;
+  const userRankIndex = allScores.findIndex(
+    (u) => u._id.toString() === userId.toString()
+  );
+  const userRank = userRankIndex >= 0 ? userRankIndex + 1 : null;
+  const userScore =
+    userRankIndex >= 0 ? allScores[userRankIndex].totalScore : 0;
 
   return {
-    players: scores.map(({ username, profileImageUrl }) => ({
+    players: scores.map(({ username, profileImageUrl, totalScore }) => ({
       username,
       profileImageUrl,
+      score: totalScore,
     })),
-    yourPosition: userRank || null,
+    yourPosition: userRank,
+    yourScore: userScore,
   };
 }
