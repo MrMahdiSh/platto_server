@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Item = require("../models/Item");
 const Friends = require("../models/Friends");
 const nodemailer = require("nodemailer");
+const Leaderboard = require("../models/LeaderBoard");
 
 exports.buy = async (data) => {
   try {
@@ -284,56 +285,17 @@ exports.search = async (data) => {
 exports.leaderboard = async (data) => {
   try {
     const { userId } = data;
-    // Fetch users sorted by coins and diamonds in descending order
-    const users = await User.find()
-      .sort({ "stats.totalPoints": -1 })
-      .select("username stats.totalPoints -_id")
-      .limit(10); // Limit to top 10 users based on total points
 
-    // Declare and assign places based on points
-    let leaderboard = users.map((user) => ({
-      username: user.username,
-      points: user.stats.totalPoints,
-    }));
-
-    leaderboard.sort((a, b) => b.points - a.points); // Sort by points descending
-
-    let currentPlace = 1;
-    for (let i = 0; i < leaderboard.length; i++) {
-      if (i > 0 && leaderboard[i].points === leaderboard[i - 1].points) {
-        leaderboard[i].place = leaderboard[i - 1].place;
-      } else {
-        leaderboard[i].place = currentPlace;
-      }
-      currentPlace++;
-    }
-
-    // Calculate the current user's place (same logic with shared places)
-    const allUsers = await User.find().sort({ "stats.totalPoints": -1 });
-    let userPlace = null;
-    let currentGlobalPlace = 1;
-
-    for (let i = 0; i < allUsers.length; i++) {
-      if (
-        i > 0 &&
-        allUsers[i].stats.totalPoints === allUsers[i - 1].stats.totalPoints
-      ) {
-        // same as previous, keep same place
-      } else {
-        currentGlobalPlace = i + 1;
-      }
-
-      if (allUsers[i]._id.toString() === userId) {
-        userPlace = currentGlobalPlace;
-        break;
-      }
-    }
-
+    const [today, monthly, total] = await Promise.all([
+      getTopPlayers(getTodayRange, userId),
+      getTopPlayers(getMonthRange, userId),
+      getTopPlayers(getAllTimeRange, userId),
+    ]);
     // Return both leaderboard and userPlace
     return {
       status: "success",
       message: "Leaderboard fetched successfully",
-      data: { leaderboard, userPlace },
+      data: { today, monthly, total },
     };
   } catch (error) {
     console.error("Leaderboard error:", error);
@@ -470,3 +432,108 @@ exports.rejectFriendRequest = async (data) => {
     };
   }
 };
+
+// Helper to get start and end of today
+function getTodayRange() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+// Helper to get start and end of current month
+function getMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999
+  );
+  return { start, end };
+}
+
+// Helper to get all time (no date filter)
+function getAllTimeRange() {
+  return { start: new Date(0), end: new Date() };
+}
+
+// Core function to get leaderboard
+async function getTopPlayers(rangeFn, userId, limit = 10) {
+  const { start, end } = rangeFn();
+
+  // Aggregate top players
+  const scores = await Leaderboard.aggregate([
+    {
+      $match: {
+        date: { $gte: start, $lte: end },
+      },
+    },
+    {
+      $group: {
+        _id: "$user",
+        totalScore: { $sum: "$score" },
+      },
+    },
+    {
+      $sort: { totalScore: -1 },
+    },
+    {
+      $limit: limit,
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "_id",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    {
+      $unwind: "$user",
+    },
+    {
+      $project: {
+        _id: 0,
+        userId: "$user._id",
+        username: "$user.username",
+        profileImageUrl: "$user.profileImageUrl",
+        totalScore: 1,
+      },
+    },
+  ]);
+
+  // Get user rank among all users
+  const allScores = await Leaderboard.aggregate([
+    {
+      $match: {
+        date: { $gte: start, $lte: end },
+      },
+    },
+    {
+      $group: {
+        _id: "$user",
+        totalScore: { $sum: "$score" },
+      },
+    },
+    {
+      $sort: { totalScore: -1 },
+    },
+  ]);
+
+  const userRank =
+    allScores.findIndex((u) => u._id.toString() === userId.toString()) + 1;
+
+  return {
+    players: scores.map(({ username, profileImageUrl }) => ({
+      username,
+      profileImageUrl,
+    })),
+    yourPosition: userRank || null,
+  };
+}

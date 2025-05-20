@@ -4,9 +4,12 @@ const Tournament = require("../models/Tournament");
 const User = require("../models/User");
 const Question = require("../models/Question");
 const Friends = require("../models/Friends");
+const LeaderBoard = require("../models/LeaderBoard");
+
 const {
   acceptFriendRequest,
   rejectFriendRequest,
+  leaderboard,
 } = require("../services/GameService");
 
 module.exports = (wss) => {
@@ -98,9 +101,11 @@ module.exports = (wss) => {
                     const afterReduce = player.stats.totalPoints - gameCupCost;
                     if (afterReduce >= 0) {
                       if (game.gameType != "4Player") {
-                        player.stats.totalPoints -= gameCupCost + 1;
-                      } else {
                         player.stats.totalPoints -= gameCupCost;
+                        newLeaderboardLog(-gameCupCost, player);
+                      } else {
+                        player.stats.totalPoints -= gameCupCost + 1;
+                        newLeaderboardLog(-(gameCupCost + 1), player);
                       }
                     } else {
                       player.stats.totalPoints = 0;
@@ -230,6 +235,9 @@ module.exports = (wss) => {
                       } else {
                         player.stats.totalPoints = 0;
                       }
+
+                      newLeaderboardLog(-gameCupCost, player);
+
                       await player.save();
                       return {
                         userId: player._id,
@@ -313,6 +321,7 @@ module.exports = (wss) => {
               winner.stats.tournamentsWon =
                 (winner.stats.tournamentsWon || 0) + 1;
               await winner.save();
+              newLeaderboardLog(tournamentGamesWinnerCupPrize, winner);
             }
 
             const tournamentCompleteResponse = {
@@ -608,6 +617,7 @@ module.exports = (wss) => {
               : cupsShouldAdd;
           user.stats.gamesPlayed += 1;
           user.stats.gamesWon += 1;
+          newLeaderboardLog(cupsShouldAdd, user);
           await user.save();
         }
       } catch (err) {
@@ -773,5 +783,12 @@ module.exports = (wss) => {
           err
         );
       });
+  }
+
+  function newLeaderboardLog(value, user) {
+    LeaderBoard.create({
+      user,
+      score: value,
+    });
   }
 };
