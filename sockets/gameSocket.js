@@ -42,6 +42,8 @@ module.exports = (wss) => {
           ws.userId = userId;
 
           if (gameType != "Tournament") {
+            console.log("the host:" + targetHost + "user id :" + userId);
+
             console.log(
               "Its not a tournamnet and now we wanna play a " +
                 gameType +
@@ -108,6 +110,10 @@ module.exports = (wss) => {
                         newLeaderboardLog(-(gameCupCost + 1), player);
                       }
                     } else {
+                      if (player.stats.totalPoints > 0) {
+                        newLeaderboardLog(-player.stats.totalPoints, player);
+                      }
+
                       player.stats.totalPoints = 0;
                     }
                     player.stats.gamesPlayed++;
@@ -232,11 +238,13 @@ module.exports = (wss) => {
                         player.stats.totalPoints - gameCupCost;
                       if (afterReduce >= 0) {
                         player.stats.totalPoints -= gameCupCost;
+                        newLeaderboardLog(-gameCupCost, player);
                       } else {
+                        if (player.stats.totalPoints > 0) {
+                          newLeaderboardLog(-player.stats.totalPoints, player);
+                        }
                         player.stats.totalPoints = 0;
                       }
-
-                      newLeaderboardLog(-gameCupCost, player);
 
                       await player.save();
                       return {
@@ -321,7 +329,10 @@ module.exports = (wss) => {
               winner.stats.tournamentsWon =
                 (winner.stats.tournamentsWon || 0) + 1;
               await winner.save();
-              newLeaderboardLog(tournamentGamesWinnerCupPrize, winner);
+              newLeaderboardLog(
+                tournamentGamesWinnerCupPrize + gameCupCost,
+                winner
+              );
             }
 
             const tournamentCompleteResponse = {
@@ -508,13 +519,13 @@ module.exports = (wss) => {
             to: receiverUser,
           });
 
-          broadcastToRoom(
-            gameId,
+          console.log(data);
+
+          broadcastToAll(
             JSON.stringify({
               eventType: "friend_invitation",
-              data: { sender, receiver, gameId },
-            }),
-            ws
+              data: { sender, receiver, gameId: "" },
+            })
           );
         } else if (eventType === "friend_invitation_accept_server") {
           const { sender, receiver, gameId } = data;
@@ -542,13 +553,11 @@ module.exports = (wss) => {
           // save to friends request list
           acceptFriendRequest({ sender, receiver });
 
-          broadcastToRoom(
-            gameId,
+          broadcastToAll(
             JSON.stringify({
               eventType: "friend_invitation_accept",
-              data: { sender, receiver, gameId },
-            }),
-            ws
+              data: { sender, receiver, gameId: "" },
+            })
           );
         } else if (eventType === "friend_invitation_reject_server") {
           const { sender, receiver } = data;
@@ -611,13 +620,18 @@ module.exports = (wss) => {
               break;
           }
           user.coins += coinsShouldAdd;
+          newLeaderboardLog(
+            user.stats.totalPoints !== 0
+              ? cupsShouldAdd + gameCupCost
+              : cupsShouldAdd,
+            user
+          );
           user.stats.totalPoints +=
             user.stats.totalPoints !== 0
               ? cupsShouldAdd + gameCupCost
               : cupsShouldAdd;
           user.stats.gamesPlayed += 1;
           user.stats.gamesWon += 1;
-          newLeaderboardLog(cupsShouldAdd, user);
           await user.save();
         }
       } catch (err) {
