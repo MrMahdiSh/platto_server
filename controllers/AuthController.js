@@ -6,13 +6,11 @@ exports.signUp = async (req, res, next) => {
   try {
     const userData = requestCombiner(req);
     const user = await authService.signUpWithPhone(userData);
-    res
-      .status(201)
-      .json({
-        success: true,
-        data: user,
-        message: "User created successfully!",
-      });
+    res.status(201).json({
+      success: true,
+      data: user,
+      message: "User created successfully!",
+    });
   } catch (error) {
     next(error);
   }
@@ -87,6 +85,38 @@ exports.preRegister = async (req, res, next) => {
       message: "Email and username are unique.",
       code: 200,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.telegramSignUP = async (req, res, next) => {
+  const { email, password } = requestCombiner(req);
+
+  try {
+    const timestamp = new Date();
+    const randomString = Math.random().toString(36).substr(2, 5);
+    const theEmail = `${email}@example.com`;
+    const username = email;
+
+    const existingUser = await User.findOne({ username, email: theEmail });
+    var guestUserAccount;
+    if (existingUser) {
+      guestUserAccount = await authService.loginWithPhone({
+        username,
+        password,
+      });
+    } else {
+      guestUserAccount = await authService.signUpWithPhone({
+        username,
+        password,
+        email: theEmail,
+      });
+    }
+
+    res
+      .status(201)
+      .json({ success: true, data: guestUserAccount, message: "Success!" });
   } catch (error) {
     next(error);
   }
