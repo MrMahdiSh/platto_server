@@ -56,6 +56,7 @@ exports.guest = async (req, res, next) => {
 
     const guestUserAccount = await authService.signUpWithPhone({
       username,
+      name: "guest",
       password: Math.random().toString(36).substr(2, 9),
       email,
     });
@@ -91,15 +92,13 @@ exports.preRegister = async (req, res, next) => {
 };
 
 exports.telegramSignUP = async (req, res, next) => {
-  const { email, password } = requestCombiner(req);
+  const { email, password, name } = requestCombiner(req);
 
   try {
-    const timestamp = new Date();
-    const randomString = Math.random().toString(36).substr(2, 5);
     const theEmail = `${email}@example.com`;
     const username = email;
 
-    const existingUser = await User.findOne({ username, email: theEmail });
+    const existingUser = await User.findOne({ email: theEmail });
     var guestUserAccount;
     if (existingUser) {
       guestUserAccount = await authService.loginWithPhone({
@@ -110,6 +109,7 @@ exports.telegramSignUP = async (req, res, next) => {
       guestUserAccount = await authService.signUpWithPhone({
         username,
         password,
+        name,
         email: theEmail,
       });
     }

@@ -121,6 +121,7 @@ module.exports = (wss) => {
                     return {
                       userId: player._id,
                       username: player.username,
+                      name: player.username,
                       profileImageUrl: player.profileImageUrl,
                     };
                   })
@@ -250,6 +251,7 @@ module.exports = (wss) => {
                       return {
                         userId: player._id,
                         username: player.username,
+                        name: player.name,
                         profileImageUrl: player.profileImageUrl,
                       };
                     })
@@ -384,6 +386,7 @@ module.exports = (wss) => {
                   return {
                     userId: player._id,
                     username: player.username,
+                    name: player.name,
                     profileImageUrl: player.profileImageUrl,
                   };
                 })
