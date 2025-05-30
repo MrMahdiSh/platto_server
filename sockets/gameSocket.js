@@ -121,7 +121,7 @@ module.exports = (wss) => {
                     return {
                       userId: player._id,
                       username: player.username,
-                      name: player.username,
+                      name: player.name,
                       profileImageUrl: player.profileImageUrl,
                     };
                   })
